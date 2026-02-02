@@ -1,5 +1,7 @@
-numpy
-pandas
-scipy
-matplotlib
-seaborn
+numpy~=2.4.1
+pandas~=3.0.0
+scipy~=1.17.0
+matplotlib~=3.10.8
+seaborn~=0.13.2
+
+pydantic~=2.12.5
