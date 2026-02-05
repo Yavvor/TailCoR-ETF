@@ -17,7 +17,7 @@
         /* Tylko zielony dla zwycięzcy */
         .winner { background-color: #d1e7dd !important; color: #0f5132 !important; font-weight: bold; }
 
-        /* Styl komunikatu o braku danych wewnątrz kontenera wykresu */
+        /* Styl komunikatu o braku danych */
         .no-data-msg {
             position: absolute;
             top: 50%; left: 50%;
@@ -144,6 +144,32 @@
     </div>
 
     <script>
+        // DEFINICJA STAŁYCH KOLORÓW DLA SEKTORÓW
+        const SECTOR_COLORS = {
+            "Commercial services": "#1f77b4",       // Niebieski
+            "Communications": "#ff7f0e",            // Pomarańczowy
+            "Consumer durables": "#2ca02c",         // Zielony
+            "Consumer non-durables": "#d62728",     // Czerwony
+            "Consumer services": "#9467bd",         // Fioletowy
+            "Distribution services": "#8c564b",     // Brązowy
+            "Electronic technology": "#e377c2",     // Różowy
+            "Energy minerals": "#7f7f7f",           // Szary
+            "Finance": "#bcbd22",                   // Oliwkowy
+            "Health services": "#17becf",           // Cyjan
+            "Health technology": "#aec7e8",         // Jasny niebieski
+            "Industrial services": "#ffbb78",       // Jasny pomarańczowy
+            "Miscellaneous": "#98df8a",             // Jasny zielony
+            "Non-energy minerals": "#ff9896",       // Jasny czerwony
+            "Other": "#c5b0d5",                     // Jasny fiolet
+            "Process industries": "#c49c94",        // Jasny brąz
+            "Producer manufacturing": "#f7b6d2",    // Jasny róż
+            "Retail trade": "#dbdb8d",              // Jasny oliwkowy
+            "Technology services": "#9edae5",       // Jasny cyjan
+            "Transportation": "#393b79",            // Ciemny granat
+            "Utilities": "#5254a3"                  // Fioletowo-niebieski
+        };
+        const DEFAULT_COLOR = "#cccccc";
+
         let allDates = [];
         let currentP1 = null;
         let currentP2 = null;
@@ -164,7 +190,7 @@
 
             if(data1.error || data2.error) { alert("Błąd pobierania danych"); return; }
 
-            // Łączenie i sortowanie dat (Suma logiczna zbiorów)
+            // Łączenie i sortowanie dat
             const datesSet = new Set([...data1.dates, ...data2.dates]);
             allDates = Array.from(datesSet).sort();
 
@@ -219,15 +245,12 @@
         function renderChart(divId, data, type) {
             const container = document.getElementById(divId);
 
-            // Logika braku danych:
             if (data.error || data.empty) {
-                // Ważne: Czyścimy Plotly, żeby nie wisiał stary wykres
                 Plotly.purge(divId);
                 container.innerHTML = "<div class='no-data-msg'>Brak danych</div>";
                 return;
             }
 
-            // Sprawdzamy czy dane mają sens (puste dicty)
             const hasData = type === 'pie'
                 ? (data.sectors && Object.keys(data.sectors).length > 0)
                 : (data.tickers && Object.keys(data.tickers).length > 0);
@@ -238,18 +261,26 @@
                 return;
             }
 
-            // Jeśli mamy dane, usuwamy ewentualny tekst "Brak danych"
             if (container.querySelector('.no-data-msg')) {
                  container.innerHTML = "";
             }
 
-            // Logika wykresów
             if (type === 'pie') {
                 const sectors = Object.keys(data.sectors);
                 const values = Object.values(data.sectors);
+
+                // Mapowanie kolorów dla wykresu kołowego
+                const markerColors = sectors.map(s => SECTOR_COLORS[s] || DEFAULT_COLOR);
+
                 Plotly.react(divId, [{
-                    values: values, labels: sectors, type: 'pie',
-                    textinfo: 'label+percent', automargin: true
+                    values: values,
+                    labels: sectors,
+                    type: 'pie',
+                    textinfo: 'label+percent',
+                    automargin: true,
+                    marker: {
+                        colors: markerColors // Przypisanie stałych kolorów
+                    }
                 }], { margin: {t: 10, b: 10, l: 10, r: 10}, showlegend: false });
 
             } else if (type === 'bar') {
@@ -257,12 +288,10 @@
                 for (const [ticker, weight] of Object.entries(data.tickers)) {
                     if (weight > 0.001) {
                         const fullName = (data.names && data.names[ticker]) ? data.names[ticker] : ticker;
-                        // Skracamy zbyt długie nazwy dla estetyki
                         const displayName = fullName.length > 30 ? fullName.substring(0, 28) + '...' : fullName;
                         items.push({ name: displayName, weight: weight, fullName: fullName });
                     }
                 }
-                // Sortowanie: największe na górze
                 items.sort((a, b) => a.weight - b.weight);
 
                 const trace = {
@@ -282,7 +311,7 @@
                 };
 
                 const layout = {
-                    margin: {l: 160, r: 20, t: 10, b: 30}, // Duży margines na nazwy
+                    margin: {l: 160, r: 20, t: 10, b: 30},
                     xaxis: { tickformat: ',.0%', range: [0, Math.max(...trace.x) * 1.15] }
                 };
 
@@ -307,22 +336,18 @@
                 const td1 = document.getElementById(`${id}-1`);
                 const td2 = document.getElementById(`${id}-2`);
 
-                // Reset
                 td1.className = ''; td2.className = '';
                 td1.innerText = val1 !== null ? val1 + suffix : '-';
                 td2.innerText = val2 !== null ? val2 + suffix : '-';
 
                 if (val1 === null || val2 === null) return;
 
-                // Logika wygrywania (Goal: 'high' or 'low')
                 let winner1 = false;
-
                 if (goal === 'high') {
                     if (val1 > val2) winner1 = true;
                     else if (val2 > val1) winner1 = false;
-                    else return; // remis
+                    else return;
                 } else {
-                    // low (np. volatility)
                     if (val1 < val2) winner1 = true;
                     else if (val2 < val1) winner1 = false;
                     else return;
@@ -338,7 +363,6 @@
             if(!s1 || !s2) return;
 
             updateRow('res-ret', s1.return, s2.return, '%', 'high');
-            // Dla Max DD: API zwraca liczbę ujemną (np. -20). Lepsza jest ta bliższa zeru (-5 > -20).
             updateRow('res-mdd', s1.max_dd, s2.max_dd, '%', 'high');
             updateRow('res-vol', s1.volatility, s2.volatility, '%', 'low');
             updateRow('res-shp', s1.sharpe, s2.sharpe, '', 'high');
