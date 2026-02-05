@@ -51,7 +51,7 @@ def export_result(portfolio_obj, filename, run_name, params, market_obj):
     }
 
     # 6. Zapisz JSON
-    json_path = f"storage/{filename}.json"
+    json_path = f"{ROOT}/storage/{filename}.json"
     with open(json_path, 'w', encoding='utf-8') as f:
         json.dump(metadata, f, ensure_ascii=False, indent=4)
 
