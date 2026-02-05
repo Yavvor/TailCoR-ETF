@@ -10,12 +10,12 @@
         .card { box-shadow: 0 4px 6px rgba(0,0,0,0.1); border: none; margin-bottom: 20px; }
         .chart-container { height: 400px; }
         .pie-container { height: 350px; }
-        .bar-container { height: 400px; } /* Wysokość dla wykresu słupkowego */
+        .bar-container { height: 400px; }
         #date-slider { width: 100%; cursor: pointer; }
         #current-date-display { font-weight: bold; color: #0d6efd; }
-        .stat-val { font-weight: bold; }
-        .positive { color: green; }
-        .negative { color: red; }
+
+        /* Style dla tabeli wyników */
+        .winner { background-color: #d1e7dd !important; color: #0f5132 !important; font-weight: bold; }
     </style>
 </head>
 <body class="container py-4">
@@ -29,7 +29,7 @@
                 <select id="select-p1" class="form-select">
                     {% for f in tailcor %}
                     <option value="{{ f.id }}">
-                        {{ f.name }} (Risk: {{ f.params.risk_threshold }})
+                        {{ f.name }} (Start: {{ f.params.start_date }}, Risk: {{ f.params.risk_threshold }})
                     </option>
                     {% endfor %}
                 </select>
@@ -117,8 +117,8 @@
                 </tr>
                 <tr>
                     <td>Maksymalne Obsunięcie (Max DD)</td>
-                    <td id="res-mdd-1" class="text-danger"></td>
-                    <td id="res-mdd-2" class="text-danger"></td>
+                    <td id="res-mdd-1"></td>
+                    <td id="res-mdd-2"></td>
                 </tr>
                 <tr>
                     <td>Zmienność Roczna (Volatility)</td>
@@ -156,13 +156,16 @@
 
             if(data1.error || data2.error) { alert("Błąd pobierania danych"); return; }
 
-            allDates = data1.dates;
+            // 2. Łączenie dat (Suma zbiorów) - rozwiązuje problem znikających wykresów
+            // Tworzymy unikalną, posortowaną listę wszystkich dat występujących w obu portfelach
+            const datesSet = new Set([...data1.dates, ...data2.dates]);
+            allDates = Array.from(datesSet).sort();
 
-            // Ustawienie zakresu dat dla statystyk domyślnie
+            // Domyślny zakres statystyk
             document.getElementById('stat-start').value = allDates[0];
             document.getElementById('stat-end').value = allDates[allDates.length - 1];
 
-            // 2. Rysuj Wykres NAV
+            // 3. Rysuj Wykres NAV
             const trace1 = { x: data1.dates, y: data1.nav, name: 'TailCoR', type: 'scatter' };
             const trace2 = { x: data2.dates, y: data2.nav, name: 'Benchmark', type: 'scatter' };
 
@@ -174,7 +177,7 @@
             };
             Plotly.newPlot('nav-chart', [trace1, trace2], layout);
 
-            // 3. Konfiguracja Suwaka
+            // 4. Konfiguracja Suwaka
             const slider = document.getElementById('date-slider');
             slider.max = allDates.length - 1;
             slider.value = 0;
@@ -187,118 +190,164 @@
                 updateCompositions(selectedDate);
             };
 
-            // Pierwsze ładowanie składu
+            // Pierwsze ładowanie składu (pierwsza dostępna data)
             document.getElementById('current-date-display').innerText = allDates[0];
             updateCompositions(allDates[0]);
         }
 
         async function updateCompositions(dateStr) {
+            // Pobieramy dane równolegle, ale obsługujemy błędy/puste wyniki niezależnie
+            const fetchComp = (fid) => fetch(`/api/composition?file_id=${fid}&date=${dateStr}`).then(r => r.json());
+
             const [comp1, comp2] = await Promise.all([
-                fetch(`/api/composition?file_id=${currentP1}&date=${dateStr}`).then(r => r.json()),
-                fetch(`/api/composition?file_id=${currentP2}&date=${dateStr}`).then(r => r.json())
+                fetchComp(currentP1),
+                fetchComp(currentP2)
             ]);
 
-            // Funkcja do rysowania koła (Sektory)
-            const drawPie = (divId, data) => {
-                if (data.error || Object.keys(data.sectors).length === 0) {
-                    document.getElementById(divId).innerHTML = ""; // Czyść jeśli brak danych
-                    return;
-                }
-                const sectors = Object.keys(data.sectors);
-                const values = Object.values(data.sectors);
-
-                Plotly.react(divId, [{
-                    values: values, labels: sectors, type: 'pie',
-                    textinfo: 'label+percent', automargin: true
-                }], { margin: {t: 0, b: 0, l: 0, r: 0}, showlegend: false });
-            };
-
-            // Funkcja do rysowania słupków poziomych (Spółki)
-            const drawBar = (divId, data) => {
-                if (data.error || Object.keys(data.tickers).length === 0) {
-                    document.getElementById(divId).innerHTML = "";
-                    return;
-                }
-
-                // Przygotowanie danych: sortowanie i mapowanie nazw
-                let items = [];
-                for (const [ticker, weight] of Object.entries(data.tickers)) {
-                    if (weight > 0.001) { // Pomiń śladowe ilości
-                        // Pobierz pełną nazwę lub użyj tickera
-                        const fullName = (data.names && data.names[ticker]) ? data.names[ticker] : ticker;
-                        items.push({ name: fullName, weight: weight });
-                    }
-                }
-
-                // Sortowanie rosnąco po wadze (dla wykresu słupkowego poziomego największe lądują na górze przy odpowiedniej osi)
-                items.sort((a, b) => a.weight - b.weight);
-
-                const yNames = items.map(i => i.name);
-                const xWeights = items.map(i => i.weight);
-                const textLabels = items.map(i => (i.weight * 100).toFixed(2) + '%');
-
-                const trace = {
-                    type: 'bar',
-                    x: xWeights,
-                    y: yNames,
-                    orientation: 'h',
-                    text: textLabels,
-                    textposition: 'auto',
-                    marker: { color: '#636efa' }
-                };
-
-                const layout = {
-                    margin: {l: 150, r: 20, t: 10, b: 30}, // Duży margines z lewej na nazwy spółek
-                    xaxis: { tickformat: ',.0%', range: [0, Math.max(...xWeights) * 1.1] } // Trochę luzu z prawej
-                };
-
-                Plotly.react(divId, [trace], layout);
-            };
-
+            // Funkcje rysujące (obsługują przypadek braku danych dla konkretnego portfela)
             drawPie('pie-1', comp1);
             drawPie('pie-2', comp2);
             drawBar('bar-1', comp1);
             drawBar('bar-2', comp2);
         }
 
+        function drawPie(divId, data) {
+            const container = document.getElementById(divId);
+            if (data.error || data.empty || !data.sectors || Object.keys(data.sectors).length === 0) {
+                container.innerHTML = "<div class='d-flex align-items-center justify-content-center h-100 text-muted'>Brak danych dla tej daty</div>";
+                return;
+            }
+
+            const sectors = Object.keys(data.sectors);
+            const values = Object.values(data.sectors);
+
+            Plotly.react(divId, [{
+                values: values, labels: sectors, type: 'pie',
+                textinfo: 'label+percent', automargin: true
+            }], { margin: {t: 10, b: 10, l: 10, r: 10}, showlegend: false });
+        }
+
+        function drawBar(divId, data) {
+            const container = document.getElementById(divId);
+            if (data.error || data.empty || !data.tickers || Object.keys(data.tickers).length === 0) {
+                container.innerHTML = "<div class='d-flex align-items-center justify-content-center h-100 text-muted'>Brak danych dla tej daty</div>";
+                return;
+            }
+
+            let items = [];
+            for (const [ticker, weight] of Object.entries(data.tickers)) {
+                if (weight > 0.001) {
+                    const fullName = (data.names && data.names[ticker]) ? data.names[ticker] : ticker;
+                    // Skracamy nazwę jeśli jest absurdalnie długa (>30 znaków) i dodajemy "..."
+                    const displayName = fullName.length > 35 ? fullName.substring(0, 32) + '...' : fullName;
+                    items.push({ name: displayName, weight: weight, fullName: fullName });
+                }
+            }
+
+            // Sortowanie rosnąco (największe na górze wykresu)
+            items.sort((a, b) => a.weight - b.weight);
+
+            const yNames = items.map(i => i.name);
+            const xWeights = items.map(i => i.weight);
+            const textLabels = items.map(i => (i.weight * 100).toFixed(2) + '%');
+            const hoverText = items.map(i => `${i.fullName}: ${(i.weight * 100).toFixed(2)}%`);
+
+            const trace = {
+                type: 'bar',
+                x: xWeights,
+                y: yNames,
+                orientation: 'h',
+                text: textLabels,
+                textposition: 'auto',
+                hovertext: hoverText,
+                hoverinfo: 'text',
+                marker: {
+                    color: xWeights,
+                    colorscale: 'Viridis', // Kolorowy wykres
+                    showscale: false
+                }
+            };
+
+            const layout = {
+                // Duży margines z lewej (l: 180) żeby napisy się mieściły
+                margin: {l: 180, r: 20, t: 10, b: 30},
+                xaxis: { tickformat: ',.0%', range: [0, Math.max(...xWeights) * 1.15] }
+            };
+
+            Plotly.react(divId, [trace], layout);
+        }
+
         async function calcStats() {
             const start = document.getElementById('stat-start').value;
             const end = document.getElementById('stat-end').value;
-
             if(!start || !end) return;
 
             const res = await fetch('/api/stats', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({
-                    id1: currentP1,
-                    id2: currentP2,
-                    start_date: start,
-                    end_date: end
-                })
+                body: JSON.stringify({ id1: currentP1, id2: currentP2, start_date: start, end_date: end })
             }).then(r => r.json());
 
             document.getElementById('stats-table').style.display = 'table';
 
-            const fillCol = (suffix, data) => {
-                if(!data) {
-                    document.getElementById(`res-ret-${suffix}`).innerText = "Brak danych";
+            // Logika podświetlania zwycięzcy
+            // bestType: 'high' (im więcej tym lepiej), 'low' (im mniej tym lepiej)
+            const updateRow = (id, val1, val2, suffix, bestType) => {
+                const td1 = document.getElementById(`${id}-1`);
+                const td2 = document.getElementById(`${id}-2`);
+
+                // Reset klas
+                td1.className = ''; td2.className = '';
+
+                if (val1 === null || val2 === null) {
+                    td1.innerText = val1 !== null ? val1 + suffix : '-';
+                    td2.innerText = val2 !== null ? val2 + suffix : '-';
                     return;
                 }
-                const retElem = document.getElementById(`res-ret-${suffix}`);
-                retElem.innerText = data.return + '%';
-                retElem.className = data.return >= 0 ? 'positive fw-bold' : 'negative fw-bold';
 
-                document.getElementById(`res-mdd-${suffix}`).innerText = data.max_dd + '%';
-                document.getElementById(`res-vol-${suffix}`).innerText = data.volatility + '%';
-                document.getElementById(`res-shp-${suffix}`).innerText = data.sharpe;
+                td1.innerText = val1 + suffix;
+                td2.innerText = val2 + suffix;
+
+                // Sprawdzanie kto wygrał
+                let p1Wins = false;
+                if (bestType === 'high') {
+                    if (val1 > val2) p1Wins = true;
+                } else {
+                    // Dla 'low' (np. zmienność) mniejsza wartość wygrywa
+                    // Dla MaxDD (ujemne liczby) też używamy logiki matematycznej:
+                    // np. -10 > -30, więc "większa" liczba (bliższa zera) jest lepsza.
+                    // Ale tutaj API zwraca max_dd jako np. -25.50.
+                    // Więc -10% jest lepsze niż -25%. Matematycznie -10 > -25.
+                    // Zatem dla DD też stosujemy 'high' jeśli wartości są ujemne.
+                    // Jeśli jednak API zwracałoby moduł (25%), to wtedy 'low'.
+                    // Sprawdźmy app.py: zwraca min() z drawdownów, czyli liczbę ujemną.
+                    // Zatem -5 (mały spadek) > -50 (duży spadek). Higher is better.
+
+                    if (val1 < val2) p1Wins = true;
+                }
+
+                // Wyjątek dla zmienności (Volatility): im mniej tym lepiej
+                if (id === 'res-vol') {
+                   if (val1 < val2) td1.classList.add('winner');
+                   else if (val2 < val1) td2.classList.add('winner');
+                } else {
+                   // Return, Sharpe, MaxDD (bo ujemne): im więcej (matematycznie) tym lepiej
+                   if (val1 > val2) td1.classList.add('winner');
+                   else if (val2 > val1) td2.classList.add('winner');
+                }
             };
 
-            fillCol('1', res.p1_stats);
-            fillCol('2', res.p2_stats);
+            const s1 = res.p1_stats;
+            const s2 = res.p2_stats;
+
+            if(!s1 || !s2) return;
+
+            updateRow('res-ret', s1.return, s2.return, '%', 'high');
+            updateRow('res-mdd', s1.max_dd, s2.max_dd, '%', 'high'); // -5% > -20%
+            updateRow('res-vol', s1.volatility, s2.volatility, '%', 'low');
+            updateRow('res-shp', s1.sharpe, s2.sharpe, '', 'high');
         }
 
-        // Auto init jeśli dane są załadowane w selektorach
         window.onload = function() {
             if(document.getElementById('select-p1').options.length > 0) {
                initDashboard();

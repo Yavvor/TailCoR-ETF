@@ -11,7 +11,6 @@ STORAGE_DIR = 'storage'
 
 
 def get_metadata(file_id):
-    """Ładuje plik JSON z metadanymi"""
     path = os.path.join(STORAGE_DIR, f"{file_id}.json")
     if os.path.exists(path):
         with open(path, 'r', encoding='utf-8') as f:
@@ -21,14 +20,17 @@ def get_metadata(file_id):
 
 @app.route('/')
 def index():
-    # Pobieranie listy dostępnych analiz i segregacja
     tailcor_files = []
     benchmark_files = []
 
     for f in glob.glob(os.path.join(STORAGE_DIR, '*.json')):
         meta = json.load(open(f, 'r', encoding='utf-8'))
-        # Sprawdzamy typ (zakładamy, że Benchmark może nie mieć pola type lub mieć 'Benchmark')
         f_type = meta.get('params', {}).get('type', 'Benchmark')
+
+        # Upewniamy się, że mamy start_date do wyświetlenia
+        if 'start_date' not in meta.get('params', {}):
+            # Fallback jeśli w params nie ma daty, szukamy w nazwie lub dajemy brak
+            meta['params']['start_date'] = 'N/A'
 
         if f_type == 'TailCoR':
             tailcor_files.append(meta)
@@ -40,15 +42,11 @@ def index():
 
 @app.route('/api/series')
 def get_series():
-    """Zwraca całe szeregi czasowe (NAV, Drawdown)"""
     file_id = request.args.get('file_id')
     try:
         df = pd.read_csv(os.path.join(STORAGE_DIR, f"{file_id}.csv"))
-
-        # Konwersja daty
         df['date'] = pd.to_datetime(df['date'])
 
-        # Obliczenia "w locie"
         roll_max = df['nav'].cummax()
         drawdown = (df['nav'] - roll_max) / roll_max
 
@@ -64,28 +62,26 @@ def get_series():
 
 @app.route('/api/composition')
 def get_composition():
-    """Zwraca skład portfela oraz mapowanie nazw spółek"""
     file_id = request.args.get('file_id')
     target_date = request.args.get('date')
 
     try:
-        # 1. Metadane
         meta = get_metadata(file_id)
         sector_map = meta.get('sector_map', {})
-        asset_names = meta.get('asset_names', {})  # Pełne nazwy
+        asset_names = meta.get('asset_names', {})
 
-        # 2. CSV
         df = pd.read_csv(os.path.join(STORAGE_DIR, f"{file_id}.csv"))
+        # Szukanie dokładnej daty
         row = df.loc[df['date'] == target_date]
 
         if row.empty:
-            return jsonify({'error': 'Date not found'}), 404
+            # Zwracamy pusty obiekt, ale nie 404/błąd krytyczny,
+            # żeby frontend wiedział, że po prostu nie ma danych na ten dzień
+            return jsonify({'empty': True})
 
-        # 3. Wagi
         weights_str = row['weights'].values[0]
         weights = ast.literal_eval(weights_str)
 
-        # 4. Agregacja Sektorowa
         sector_alloc = {}
         for ticker, weight in weights.items():
             if weight < 0.001: continue
@@ -94,7 +90,7 @@ def get_composition():
 
         return jsonify({
             'date': target_date,
-            'tickers': weights,
+            'tickers': weighsts,
             'sectors': sector_alloc,
             'names': asset_names
         })
@@ -105,41 +101,35 @@ def get_composition():
 
 @app.route('/api/stats', methods=['POST'])
 def calculate_stats():
-    """Oblicza statystyki dla zadanego okresu"""
     data = request.json
     id1 = data.get('id1')
     id2 = data.get('id2')
     start_date = data.get('start_date')
     end_date = data.get('end_date')
 
-    def get_metrics(fid, s_date, e_date):
+    def get_metrics(fid):
         try:
             df = pd.read_csv(os.path.join(STORAGE_DIR, f"{fid}.csv"))
             df['date'] = pd.to_datetime(df['date'])
 
-            mask = (df['date'] >= pd.to_datetime(s_date)) & (df['date'] <= pd.to_datetime(e_date))
+            mask = (df['date'] >= pd.to_datetime(start_date)) & (df['date'] <= pd.to_datetime(end_date))
             period_df = df.loc[mask].copy()
 
-            if period_df.empty:
-                return None
+            if period_df.empty: return None
 
             period_df.set_index('date', inplace=True)
 
-            # 1. Total Return
             start_val = period_df['nav'].iloc[0]
             end_val = period_df['nav'].iloc[-1]
             total_return = (end_val - start_val) / start_val
 
-            # 2. Max Drawdown w tym okresie
             roll_max = period_df['nav'].cummax()
             dd = (period_df['nav'] - roll_max) / roll_max
-            max_dd = dd.min()
+            max_dd = dd.min()  # to będzie np. -0.25
 
-            # 3. Volatility (Annualized)
             period_df['ret'] = period_df['nav'].pct_change()
             volatility = period_df['ret'].std() * np.sqrt(252)
 
-            # 4. Sharpe Ratio (uproszczony, risk-free=0)
             avg_ret = period_df['ret'].mean() * 252
             sharpe = avg_ret / volatility if volatility != 0 else 0
 
@@ -153,8 +143,8 @@ def calculate_stats():
             return None
 
     return jsonify({
-        'p1_stats': get_metrics(id1, start_date, end_date),
-        'p2_stats': get_metrics(id2, start_date, end_date)
+        'p1_stats': get_metrics(id1),
+        'p2_stats': get_metrics(id2)
     })
 
 
