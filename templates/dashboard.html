@@ -10,12 +10,21 @@
         .card { box-shadow: 0 4px 6px rgba(0,0,0,0.1); border: none; margin-bottom: 20px; }
         .chart-container { height: 400px; }
         .pie-container { height: 350px; }
-        .bar-container { height: 400px; }
+        .bar-container { height: 400px; position: relative; }
         #date-slider { width: 100%; cursor: pointer; }
         #current-date-display { font-weight: bold; color: #0d6efd; }
 
-        /* Style dla tabeli wyników */
+        /* Tylko zielony dla zwycięzcy */
         .winner { background-color: #d1e7dd !important; color: #0f5132 !important; font-weight: bold; }
+
+        /* Styl komunikatu o braku danych wewnątrz kontenera wykresu */
+        .no-data-msg {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            color: #6c757d;
+            font-size: 1.2rem;
+        }
     </style>
 </head>
 <body class="container py-4">
@@ -148,7 +157,6 @@
             currentP1 = id1;
             currentP2 = id2;
 
-            // 1. Pobierz szeregi
             const [data1, data2] = await Promise.all([
                 fetch(`/api/series?file_id=${id1}`).then(r => r.json()),
                 fetch(`/api/series?file_id=${id2}`).then(r => r.json())
@@ -156,16 +164,15 @@
 
             if(data1.error || data2.error) { alert("Błąd pobierania danych"); return; }
 
-            // 2. Łączenie dat (Suma zbiorów) - rozwiązuje problem znikających wykresów
-            // Tworzymy unikalną, posortowaną listę wszystkich dat występujących w obu portfelach
+            // Łączenie i sortowanie dat (Suma logiczna zbiorów)
             const datesSet = new Set([...data1.dates, ...data2.dates]);
             allDates = Array.from(datesSet).sort();
 
-            // Domyślny zakres statystyk
+            // Ustawienie zakresu statystyk
             document.getElementById('stat-start').value = allDates[0];
             document.getElementById('stat-end').value = allDates[allDates.length - 1];
 
-            // 3. Rysuj Wykres NAV
+            // Rysuj NAV
             const trace1 = { x: data1.dates, y: data1.nav, name: 'TailCoR', type: 'scatter' };
             const trace2 = { x: data2.dates, y: data2.nav, name: 'Benchmark', type: 'scatter' };
 
@@ -177,7 +184,7 @@
             };
             Plotly.newPlot('nav-chart', [trace1, trace2], layout);
 
-            // 4. Konfiguracja Suwaka
+            // Suwak
             const slider = document.getElementById('date-slider');
             slider.max = allDates.length - 1;
             slider.value = 0;
@@ -190,13 +197,12 @@
                 updateCompositions(selectedDate);
             };
 
-            // Pierwsze ładowanie składu (pierwsza dostępna data)
+            // Inicjalizacja pierwszej daty
             document.getElementById('current-date-display').innerText = allDates[0];
             updateCompositions(allDates[0]);
         }
 
         async function updateCompositions(dateStr) {
-            // Pobieramy dane równolegle, ale obsługujemy błędy/puste wyniki niezależnie
             const fetchComp = (fid) => fetch(`/api/composition?file_id=${fid}&date=${dateStr}`).then(r => r.json());
 
             const [comp1, comp2] = await Promise.all([
@@ -204,77 +210,84 @@
                 fetchComp(currentP2)
             ]);
 
-            // Funkcje rysujące (obsługują przypadek braku danych dla konkretnego portfela)
-            drawPie('pie-1', comp1);
-            drawPie('pie-2', comp2);
-            drawBar('bar-1', comp1);
-            drawBar('bar-2', comp2);
+            renderChart('pie-1', comp1, 'pie');
+            renderChart('pie-2', comp2, 'pie');
+            renderChart('bar-1', comp1, 'bar');
+            renderChart('bar-2', comp2, 'bar');
         }
 
-        function drawPie(divId, data) {
+        function renderChart(divId, data, type) {
             const container = document.getElementById(divId);
-            if (data.error || data.empty || !data.sectors || Object.keys(data.sectors).length === 0) {
-                container.innerHTML = "<div class='d-flex align-items-center justify-content-center h-100 text-muted'>Brak danych dla tej daty</div>";
+
+            // Logika braku danych:
+            if (data.error || data.empty) {
+                // Ważne: Czyścimy Plotly, żeby nie wisiał stary wykres
+                Plotly.purge(divId);
+                container.innerHTML = "<div class='no-data-msg'>Brak danych</div>";
                 return;
             }
 
-            const sectors = Object.keys(data.sectors);
-            const values = Object.values(data.sectors);
+            // Sprawdzamy czy dane mają sens (puste dicty)
+            const hasData = type === 'pie'
+                ? (data.sectors && Object.keys(data.sectors).length > 0)
+                : (data.tickers && Object.keys(data.tickers).length > 0);
 
-            Plotly.react(divId, [{
-                values: values, labels: sectors, type: 'pie',
-                textinfo: 'label+percent', automargin: true
-            }], { margin: {t: 10, b: 10, l: 10, r: 10}, showlegend: false });
-        }
-
-        function drawBar(divId, data) {
-            const container = document.getElementById(divId);
-            if (data.error || data.empty || !data.tickers || Object.keys(data.tickers).length === 0) {
-                container.innerHTML = "<div class='d-flex align-items-center justify-content-center h-100 text-muted'>Brak danych dla tej daty</div>";
+            if (!hasData) {
+                Plotly.purge(divId);
+                container.innerHTML = "<div class='no-data-msg'>Brak pozycji</div>";
                 return;
             }
 
-            let items = [];
-            for (const [ticker, weight] of Object.entries(data.tickers)) {
-                if (weight > 0.001) {
-                    const fullName = (data.names && data.names[ticker]) ? data.names[ticker] : ticker;
-                    // Skracamy nazwę jeśli jest absurdalnie długa (>30 znaków) i dodajemy "..."
-                    const displayName = fullName.length > 35 ? fullName.substring(0, 32) + '...' : fullName;
-                    items.push({ name: displayName, weight: weight, fullName: fullName });
-                }
+            // Jeśli mamy dane, usuwamy ewentualny tekst "Brak danych"
+            if (container.querySelector('.no-data-msg')) {
+                 container.innerHTML = "";
             }
 
-            // Sortowanie rosnąco (największe na górze wykresu)
-            items.sort((a, b) => a.weight - b.weight);
+            // Logika wykresów
+            if (type === 'pie') {
+                const sectors = Object.keys(data.sectors);
+                const values = Object.values(data.sectors);
+                Plotly.react(divId, [{
+                    values: values, labels: sectors, type: 'pie',
+                    textinfo: 'label+percent', automargin: true
+                }], { margin: {t: 10, b: 10, l: 10, r: 10}, showlegend: false });
 
-            const yNames = items.map(i => i.name);
-            const xWeights = items.map(i => i.weight);
-            const textLabels = items.map(i => (i.weight * 100).toFixed(2) + '%');
-            const hoverText = items.map(i => `${i.fullName}: ${(i.weight * 100).toFixed(2)}%`);
-
-            const trace = {
-                type: 'bar',
-                x: xWeights,
-                y: yNames,
-                orientation: 'h',
-                text: textLabels,
-                textposition: 'auto',
-                hovertext: hoverText,
-                hoverinfo: 'text',
-                marker: {
-                    color: xWeights,
-                    colorscale: 'Viridis', // Kolorowy wykres
-                    showscale: false
+            } else if (type === 'bar') {
+                let items = [];
+                for (const [ticker, weight] of Object.entries(data.tickers)) {
+                    if (weight > 0.001) {
+                        const fullName = (data.names && data.names[ticker]) ? data.names[ticker] : ticker;
+                        // Skracamy zbyt długie nazwy dla estetyki
+                        const displayName = fullName.length > 30 ? fullName.substring(0, 28) + '...' : fullName;
+                        items.push({ name: displayName, weight: weight, fullName: fullName });
+                    }
                 }
-            };
+                // Sortowanie: największe na górze
+                items.sort((a, b) => a.weight - b.weight);
 
-            const layout = {
-                // Duży margines z lewej (l: 180) żeby napisy się mieściły
-                margin: {l: 180, r: 20, t: 10, b: 30},
-                xaxis: { tickformat: ',.0%', range: [0, Math.max(...xWeights) * 1.15] }
-            };
+                const trace = {
+                    type: 'bar',
+                    x: items.map(i => i.weight),
+                    y: items.map(i => i.name),
+                    orientation: 'h',
+                    text: items.map(i => (i.weight * 100).toFixed(2) + '%'),
+                    textposition: 'auto',
+                    hovertext: items.map(i => `${i.fullName}: ${(i.weight * 100).toFixed(2)}%`),
+                    hoverinfo: 'text',
+                    marker: {
+                        color: items.map(i => i.weight),
+                        colorscale: 'Teal',
+                        showscale: false
+                    }
+                };
 
-            Plotly.react(divId, [trace], layout);
+                const layout = {
+                    margin: {l: 160, r: 20, t: 10, b: 30}, // Duży margines na nazwy
+                    xaxis: { tickformat: ',.0%', range: [0, Math.max(...trace.x) * 1.15] }
+                };
+
+                Plotly.react(divId, [trace], layout);
+            }
         }
 
         async function calcStats() {
@@ -290,51 +303,33 @@
 
             document.getElementById('stats-table').style.display = 'table';
 
-            // Logika podświetlania zwycięzcy
-            // bestType: 'high' (im więcej tym lepiej), 'low' (im mniej tym lepiej)
-            const updateRow = (id, val1, val2, suffix, bestType) => {
+            const updateRow = (id, val1, val2, suffix, goal) => {
                 const td1 = document.getElementById(`${id}-1`);
                 const td2 = document.getElementById(`${id}-2`);
 
-                // Reset klas
+                // Reset
                 td1.className = ''; td2.className = '';
+                td1.innerText = val1 !== null ? val1 + suffix : '-';
+                td2.innerText = val2 !== null ? val2 + suffix : '-';
 
-                if (val1 === null || val2 === null) {
-                    td1.innerText = val1 !== null ? val1 + suffix : '-';
-                    td2.innerText = val2 !== null ? val2 + suffix : '-';
-                    return;
-                }
+                if (val1 === null || val2 === null) return;
 
-                td1.innerText = val1 + suffix;
-                td2.innerText = val2 + suffix;
+                // Logika wygrywania (Goal: 'high' or 'low')
+                let winner1 = false;
 
-                // Sprawdzanie kto wygrał
-                let p1Wins = false;
-                if (bestType === 'high') {
-                    if (val1 > val2) p1Wins = true;
+                if (goal === 'high') {
+                    if (val1 > val2) winner1 = true;
+                    else if (val2 > val1) winner1 = false;
+                    else return; // remis
                 } else {
-                    // Dla 'low' (np. zmienność) mniejsza wartość wygrywa
-                    // Dla MaxDD (ujemne liczby) też używamy logiki matematycznej:
-                    // np. -10 > -30, więc "większa" liczba (bliższa zera) jest lepsza.
-                    // Ale tutaj API zwraca max_dd jako np. -25.50.
-                    // Więc -10% jest lepsze niż -25%. Matematycznie -10 > -25.
-                    // Zatem dla DD też stosujemy 'high' jeśli wartości są ujemne.
-                    // Jeśli jednak API zwracałoby moduł (25%), to wtedy 'low'.
-                    // Sprawdźmy app.py: zwraca min() z drawdownów, czyli liczbę ujemną.
-                    // Zatem -5 (mały spadek) > -50 (duży spadek). Higher is better.
-
-                    if (val1 < val2) p1Wins = true;
+                    // low (np. volatility)
+                    if (val1 < val2) winner1 = true;
+                    else if (val2 < val1) winner1 = false;
+                    else return;
                 }
 
-                // Wyjątek dla zmienności (Volatility): im mniej tym lepiej
-                if (id === 'res-vol') {
-                   if (val1 < val2) td1.classList.add('winner');
-                   else if (val2 < val1) td2.classList.add('winner');
-                } else {
-                   // Return, Sharpe, MaxDD (bo ujemne): im więcej (matematycznie) tym lepiej
-                   if (val1 > val2) td1.classList.add('winner');
-                   else if (val2 > val1) td2.classList.add('winner');
-                }
+                if (winner1) td1.classList.add('winner');
+                else td2.classList.add('winner');
             };
 
             const s1 = res.p1_stats;
@@ -343,7 +338,8 @@
             if(!s1 || !s2) return;
 
             updateRow('res-ret', s1.return, s2.return, '%', 'high');
-            updateRow('res-mdd', s1.max_dd, s2.max_dd, '%', 'high'); // -5% > -20%
+            // Dla Max DD: API zwraca liczbę ujemną (np. -20). Lepsza jest ta bliższa zeru (-5 > -20).
+            updateRow('res-mdd', s1.max_dd, s2.max_dd, '%', 'high');
             updateRow('res-vol', s1.volatility, s2.volatility, '%', 'low');
             updateRow('res-shp', s1.sharpe, s2.sharpe, '', 'high');
         }

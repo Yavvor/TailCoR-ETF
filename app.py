@@ -27,9 +27,7 @@ def index():
         meta = json.load(open(f, 'r', encoding='utf-8'))
         f_type = meta.get('params', {}).get('type', 'Benchmark')
 
-        # Upewniamy się, że mamy start_date do wyświetlenia
         if 'start_date' not in meta.get('params', {}):
-            # Fallback jeśli w params nie ma daty, szukamy w nazwie lub dajemy brak
             meta['params']['start_date'] = 'N/A'
 
         if f_type == 'TailCoR':
@@ -45,6 +43,8 @@ def get_series():
     file_id = request.args.get('file_id')
     try:
         df = pd.read_csv(os.path.join(STORAGE_DIR, f"{file_id}.csv"))
+
+        # FIX: Konwersja na datetime, a potem na string YYYY-MM-DD
         df['date'] = pd.to_datetime(df['date'])
 
         roll_max = df['nav'].cummax()
@@ -71,12 +71,14 @@ def get_composition():
         asset_names = meta.get('asset_names', {})
 
         df = pd.read_csv(os.path.join(STORAGE_DIR, f"{file_id}.csv"))
-        # Szukanie dokładnej daty
+
+        # FIX: Normalizacja daty w DataFrame do stringa YYYY-MM-DD
+        # To naprawia błąd "Brak danych" mimo że data istnieje
+        df['date'] = pd.to_datetime(df['date']).dt.strftime('%Y-%m-%d')
+
         row = df.loc[df['date'] == target_date]
 
         if row.empty:
-            # Zwracamy pusty obiekt, ale nie 404/błąd krytyczny,
-            # żeby frontend wiedział, że po prostu nie ma danych na ten dzień
             return jsonify({'empty': True})
 
         weights_str = row['weights'].values[0]
@@ -90,7 +92,7 @@ def get_composition():
 
         return jsonify({
             'date': target_date,
-            'tickers': weighsts,
+            'tickers': weights,
             'sectors': sector_alloc,
             'names': asset_names
         })
@@ -125,7 +127,7 @@ def calculate_stats():
 
             roll_max = period_df['nav'].cummax()
             dd = (period_df['nav'] - roll_max) / roll_max
-            max_dd = dd.min()  # to będzie np. -0.25
+            max_dd = dd.min()
 
             period_df['ret'] = period_df['nav'].pct_change()
             volatility = period_df['ret'].std() * np.sqrt(252)
