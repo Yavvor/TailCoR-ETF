@@ -1,6 +1,6 @@
 # TailCoR-ETF
 
-TailCoR-ETF is a Python project for working with ETF data and performing tail-risk analysis for Exchange-Traded Funds (ETFs). The repository contains a main script designed to process ETF return data with a particular focus on downside risk and tail behavior.
+TailCoR-ETF is a Python project for analyzing Exchange-Traded Fund (ETF) return data with a focus on tail risk and extreme dependence between assets. The project implements workflows to process ETF returns and compute TailCoR-based metrics, which capture both linear and nonlinear dependencies in the tails of return distributions.
 
 More about TailCor:
 
@@ -8,29 +8,61 @@ More about TailCor:
 > *TailCoR: A dependence measure for financial contagion*. PLOS ONE, 17(12), e0278599.  
 > [https://doi.org/10.1371/journal.pone.0278599](https://doi.org/10.1371/journal.pone.0278599)
 
-## Features
 
-- Python-based ETF data analysis
-- Tail-risk and extreme-return metrics
-- Simple, script-driven workflow
-- Easily extendable for further financial research
+This repository was developed as part of an academic project and is intended for research and educational purposes. It can be extended for further studies in portfolio risk management and financial data analysis.
+
+## Overview
+
+The goal of this project is to investigate whether tail correlation measures can be used to improve portfolio risk management compared to traditional correlation-based approaches. The software enables users to:
+
+- Load and preprocess ETF return data  
+- Compute TailCoR statistics for selected assets  
+- Analyze extreme co-movement behavior  
+- Export results for further research or visualization  
 
 ## Installation
 
-Install the required dependencies using:
+Clone the repository and install the required dependencies:
 
-pip install -r requirements.txt
+git clone https://github.com/Yavvor/TailCoR-ETF.git  
+cd TailCoR-ETF  
+pip install -r requirements.txt  
+
+Python version 3.7 or higher is recommended.
 
 ## Usage
 
-1. Set `folder_path` to the directory containing the input data.
-2. Set `save_path` to the directory where results should be stored.
-3. Optionally, set `WINDOW_SIZE` and `STEP` manually.  
-   If left as `None`, the script will calculate them automatically.
-4. Run the script:
+1. Prepare ETF return data and place it in the desired input directory.  
+2. Open `main.py` and set the following variables:  
+   - `folder_path` – path to the directory containing input data  
+   - `save_path` – path where output results will be saved  
+   - `WINDOW_SIZE` and `STEP` (optional). If set to `None`, they are calculated automatically.  
+3. Run the script:
 
-python main.py
+python main.py  
 
-## Notes
+Results will be saved as CSV files in the specified output directory.
 
-This project was developed as part of the *Methods of Statistical Arbitrage* coursework.
+## Project Structure
+
+TailCoR-ETF/  
+│  
+├── main.py              # Main entry point  
+├── ClassETF/            # Core ETF data handling logic  
+├── DataModels/          # Data structures and models  
+├── Tools/               # Utility and helper functions  
+├── results.csv          # Example output file  
+├── results_etf.csv      # Example output file  
+├── requirements.txt  
+└── README.md  
+
+## Extensions and Future Work
+
+Possible extensions of this project include:
+
+- Adding more tail dependence measures  
+- Integrating real-time or API-based market data  
+- Implementing portfolio optimization based on TailCoR  
+- Developing visualization tools or dashboards  
+- Comparing TailCoR with traditional correlation and covariance-based strategies  
+
