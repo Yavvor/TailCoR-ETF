@@ -10,8 +10,12 @@
         .card { box-shadow: 0 4px 6px rgba(0,0,0,0.1); border: none; margin-bottom: 20px; }
         .chart-container { height: 400px; }
         .pie-container { height: 350px; }
+        .bar-container { height: 400px; } /* Wysokość dla wykresu słupkowego */
         #date-slider { width: 100%; cursor: pointer; }
         #current-date-display { font-weight: bold; color: #0d6efd; }
+        .stat-val { font-weight: bold; }
+        .positive { color: green; }
+        .negative { color: red; }
     </style>
 </head>
 <body class="container py-4">
@@ -21,18 +25,22 @@
     <div class="card p-4">
         <div class="row">
             <div class="col-md-5">
-                <label>Portfel Lewy (Benchmark):</label>
+                <label class="form-label fw-bold">Portfel Lewy (TailCoR):</label>
                 <select id="select-p1" class="form-select">
-                    {% for f in files %}
-                    <option value="{{ f.id }}">{{ f.name }} ({{ f.params.start_date }})</option>
+                    {% for f in tailcor %}
+                    <option value="{{ f.id }}">
+                        {{ f.name }} (Risk: {{ f.params.risk_threshold }})
+                    </option>
                     {% endfor %}
                 </select>
             </div>
             <div class="col-md-5">
-                <label>Portfel Prawy (TailCoR):</label>
+                <label class="form-label fw-bold">Portfel Prawy (Benchmark):</label>
                 <select id="select-p2" class="form-select">
-                    {% for f in files %}
-                    <option value="{{ f.id }}" {% if loop.index == 2 %}selected{% endif %}>{{ f.name }}</option>
+                    {% for f in benchmark %}
+                    <option value="{{ f.id }}">
+                        {{ f.name }} ({{ f.params.start_date }})
+                    </option>
                     {% endfor %}
                 </select>
             </div>
@@ -49,27 +57,84 @@
 
     <div class="card p-3">
         <div class="d-flex justify-content-between align-items-center mb-3">
-            <h5>Skład Portfela w czasie</h5>
-            <span id="current-date-display">Wybierz datę</span>
+            <h5>Analiza Dzienna (Skład Portfela)</h5>
+            <span id="current-date-display" class="fs-4">Wybierz datę</span>
         </div>
 
         <input type="range" class="form-range" id="date-slider" min="0" max="100" value="0" disabled>
-        <small class="text-muted text-center d-block">Przesuń suwak, aby zobaczyć alokację w danym dniu</small>
+        <small class="text-muted text-center d-block mb-4">Przesuń suwak, aby zobaczyć alokację w danym dniu</small>
 
-        <div class="row mt-4">
+        <h6 class="text-center border-bottom pb-2 mb-3">Szczegółowy Skład Aktywów (Top Positions)</h6>
+        <div class="row">
+            <div class="col-md-6">
+                <div id="bar-1" class="bar-container"></div>
+            </div>
+            <div class="col-md-6">
+                <div id="bar-2" class="bar-container"></div>
+            </div>
+        </div>
+
+        <h6 class="text-center border-bottom pb-2 mt-4 mb-3">Alokacja Sektorowa</h6>
+        <div class="row">
             <div class="col-md-6 text-center">
-                <h6>Alokacja Sektorowa (Portfel 1)</h6>
                 <div id="pie-1" class="pie-container"></div>
             </div>
             <div class="col-md-6 text-center">
-                <h6>Alokacja Sektorowa (Portfel 2)</h6>
                 <div id="pie-2" class="pie-container"></div>
             </div>
         </div>
     </div>
 
+    <div class="card p-4">
+        <h5 class="mb-3">Statystyki Porównawcze (Wybrany Okres)</h5>
+        <div class="row g-3 align-items-end mb-4">
+            <div class="col-md-4">
+                <label>Data Początkowa</label>
+                <input type="date" id="stat-start" class="form-control">
+            </div>
+            <div class="col-md-4">
+                <label>Data Końcowa</label>
+                <input type="date" id="stat-end" class="form-control">
+            </div>
+            <div class="col-md-4">
+                <button onclick="calcStats()" class="btn btn-outline-primary w-100">Oblicz Statystyki</button>
+            </div>
+        </div>
+
+        <table class="table table-bordered text-center" id="stats-table" style="display: none;">
+            <thead class="table-light">
+                <tr>
+                    <th>Miara</th>
+                    <th>Portfel Lewy (TailCoR)</th>
+                    <th>Portfel Prawy (Benchmark)</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Stopa Zwrotu (Return)</td>
+                    <td id="res-ret-1"></td>
+                    <td id="res-ret-2"></td>
+                </tr>
+                <tr>
+                    <td>Maksymalne Obsunięcie (Max DD)</td>
+                    <td id="res-mdd-1" class="text-danger"></td>
+                    <td id="res-mdd-2" class="text-danger"></td>
+                </tr>
+                <tr>
+                    <td>Zmienność Roczna (Volatility)</td>
+                    <td id="res-vol-1"></td>
+                    <td id="res-vol-2"></td>
+                </tr>
+                <tr>
+                    <td>Wskaźnik Sharpe'a</td>
+                    <td id="res-shp-1"></td>
+                    <td id="res-shp-2"></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
     <script>
-        // Zmienne globalne do przechowywania stanu
         let allDates = [];
         let currentP1 = null;
         let currentP2 = null;
@@ -77,90 +142,168 @@
         async function initDashboard() {
             const id1 = document.getElementById('select-p1').value;
             const id2 = document.getElementById('select-p2').value;
+
+            if(!id1 || !id2) { alert("Wybierz oba portfele"); return; }
+
             currentP1 = id1;
             currentP2 = id2;
 
-            // 1. Pobierz szeregi czasowe
+            // 1. Pobierz szeregi
             const [data1, data2] = await Promise.all([
                 fetch(`/api/series?file_id=${id1}`).then(r => r.json()),
                 fetch(`/api/series?file_id=${id2}`).then(r => r.json())
             ]);
 
-            // Zakładamy, że daty są zbieżne, bierzemy daty z pierwszego portfela jako oś czasu
+            if(data1.error || data2.error) { alert("Błąd pobierania danych"); return; }
+
             allDates = data1.dates;
 
+            // Ustawienie zakresu dat dla statystyk domyślnie
+            document.getElementById('stat-start').value = allDates[0];
+            document.getElementById('stat-end').value = allDates[allDates.length - 1];
+
             // 2. Rysuj Wykres NAV
-            const trace1 = { x: data1.dates, y: data1.nav, name: 'Portfel 1', type: 'scatter' };
-            const trace2 = { x: data2.dates, y: data2.nav, name: 'Portfel 2', type: 'scatter' };
+            const trace1 = { x: data1.dates, y: data1.nav, name: 'TailCoR', type: 'scatter' };
+            const trace2 = { x: data2.dates, y: data2.nav, name: 'Benchmark', type: 'scatter' };
 
             const layout = {
                 margin: {t: 20, b: 40, l: 50, r: 20},
                 hovermode: 'x unified',
-                xaxis: { title: 'Data' }
+                xaxis: { title: 'Data' },
+                legend: { orientation: "h", y: 1.1 }
             };
             Plotly.newPlot('nav-chart', [trace1, trace2], layout);
 
-            // 3. Skonfiguruj Suwak
+            // 3. Konfiguracja Suwaka
             const slider = document.getElementById('date-slider');
             slider.max = allDates.length - 1;
             slider.value = 0;
             slider.disabled = false;
 
-            // Obsługa zdarzenia zmiany suwaka
             slider.oninput = function() {
                 const dateIndex = this.value;
                 const selectedDate = allDates[dateIndex];
                 document.getElementById('current-date-display').innerText = selectedDate;
-
-                // Pobierz i narysuj koła (z debouncingiem można by lepiej, ale tu prosto)
-                updatePies(selectedDate);
+                updateCompositions(selectedDate);
             };
 
-            // Inicjalizacja kół dla pierwszej daty
-            updatePies(allDates[0]);
+            // Pierwsze ładowanie składu
+            document.getElementById('current-date-display').innerText = allDates[0];
+            updateCompositions(allDates[0]);
         }
 
-        async function updatePies(dateStr) {
-            // Pobieramy skład dla obu portfeli na ten dzień
+        async function updateCompositions(dateStr) {
             const [comp1, comp2] = await Promise.all([
                 fetch(`/api/composition?file_id=${currentP1}&date=${dateStr}`).then(r => r.json()),
                 fetch(`/api/composition?file_id=${currentP2}&date=${dateStr}`).then(r => r.json())
             ]);
 
-            // Funkcja pomocnicza do rysowania
+            // Funkcja do rysowania koła (Sektory)
             const drawPie = (divId, data) => {
-                if (data.error) {
-                    document.getElementById(divId).innerHTML = "<p class='text-muted mt-5'>Brak danych</p>";
+                if (data.error || Object.keys(data.sectors).length === 0) {
+                    document.getElementById(divId).innerHTML = ""; // Czyść jeśli brak danych
                     return;
                 }
-
-                // Sortowanie danych dla estetyki
                 const sectors = Object.keys(data.sectors);
                 const values = Object.values(data.sectors);
 
-                const plotData = [{
-                    values: values,
-                    labels: sectors,
-                    type: 'pie',
-                    textinfo: 'label+percent',
-                    insidetextorientation: 'radial',
-                    automargin: true
-                }];
+                Plotly.react(divId, [{
+                    values: values, labels: sectors, type: 'pie',
+                    textinfo: 'label+percent', automargin: true
+                }], { margin: {t: 0, b: 0, l: 0, r: 0}, showlegend: false });
+            };
 
-                const layout = {
-                    margin: {t: 10, b: 10, l: 10, r: 10},
-                    showlegend: false
+            // Funkcja do rysowania słupków poziomych (Spółki)
+            const drawBar = (divId, data) => {
+                if (data.error || Object.keys(data.tickers).length === 0) {
+                    document.getElementById(divId).innerHTML = "";
+                    return;
+                }
+
+                // Przygotowanie danych: sortowanie i mapowanie nazw
+                let items = [];
+                for (const [ticker, weight] of Object.entries(data.tickers)) {
+                    if (weight > 0.001) { // Pomiń śladowe ilości
+                        // Pobierz pełną nazwę lub użyj tickera
+                        const fullName = (data.names && data.names[ticker]) ? data.names[ticker] : ticker;
+                        items.push({ name: fullName, weight: weight });
+                    }
+                }
+
+                // Sortowanie rosnąco po wadze (dla wykresu słupkowego poziomego największe lądują na górze przy odpowiedniej osi)
+                items.sort((a, b) => a.weight - b.weight);
+
+                const yNames = items.map(i => i.name);
+                const xWeights = items.map(i => i.weight);
+                const textLabels = items.map(i => (i.weight * 100).toFixed(2) + '%');
+
+                const trace = {
+                    type: 'bar',
+                    x: xWeights,
+                    y: yNames,
+                    orientation: 'h',
+                    text: textLabels,
+                    textposition: 'auto',
+                    marker: { color: '#636efa' }
                 };
 
-                Plotly.react(divId, plotData, layout);
+                const layout = {
+                    margin: {l: 150, r: 20, t: 10, b: 30}, // Duży margines z lewej na nazwy spółek
+                    xaxis: { tickformat: ',.0%', range: [0, Math.max(...xWeights) * 1.1] } // Trochę luzu z prawej
+                };
+
+                Plotly.react(divId, [trace], layout);
             };
 
             drawPie('pie-1', comp1);
             drawPie('pie-2', comp2);
+            drawBar('bar-1', comp1);
+            drawBar('bar-2', comp2);
         }
 
-        // Auto start
-        window.onload = initDashboard;
+        async function calcStats() {
+            const start = document.getElementById('stat-start').value;
+            const end = document.getElementById('stat-end').value;
+
+            if(!start || !end) return;
+
+            const res = await fetch('/api/stats', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    id1: currentP1,
+                    id2: currentP2,
+                    start_date: start,
+                    end_date: end
+                })
+            }).then(r => r.json());
+
+            document.getElementById('stats-table').style.display = 'table';
+
+            const fillCol = (suffix, data) => {
+                if(!data) {
+                    document.getElementById(`res-ret-${suffix}`).innerText = "Brak danych";
+                    return;
+                }
+                const retElem = document.getElementById(`res-ret-${suffix}`);
+                retElem.innerText = data.return + '%';
+                retElem.className = data.return >= 0 ? 'positive fw-bold' : 'negative fw-bold';
+
+                document.getElementById(`res-mdd-${suffix}`).innerText = data.max_dd + '%';
+                document.getElementById(`res-vol-${suffix}`).innerText = data.volatility + '%';
+                document.getElementById(`res-shp-${suffix}`).innerText = data.sharpe;
+            };
+
+            fillCol('1', res.p1_stats);
+            fillCol('2', res.p2_stats);
+        }
+
+        // Auto init jeśli dane są załadowane w selektorach
+        window.onload = function() {
+            if(document.getElementById('select-p1').options.length > 0) {
+               initDashboard();
+            }
+        };
     </script>
 </body>
 </html>
