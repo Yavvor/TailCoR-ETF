@@ -74,6 +74,7 @@ class PortfolioTailCoRETF(Portfolio):
         WIG20_date=self.WIG20.get_last_update_date(self.current_date)
 
         if WIG20_date != self.WIG_refactor_date:
+            self._substitute_list = self.market.get_active_tickers(self.data_start)
             self.WIG_refactor_date=WIG20_date
             self._days_since_rebalance =0
             self.rebalance_portfolio(self.WIG20.get_index_weights(self.current_date))

@@ -150,4 +150,4 @@ if __name__=='__main__':
         asset = market.get_asset("06N")
         print(f"Ticker: {asset.metadata.ticker}")
         print(f"Nazwa: {asset.metadata.name}")
-        print(f"Sektor: {asset.metadata.market_sector}")  # Powinno wyświetlić "Miscellaneous"
+        print(f"Sektor: {asset.metadata.market_sector}")

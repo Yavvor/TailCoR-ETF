@@ -6,8 +6,8 @@ from pathlib import Path
 
 # --- KONFIGURACJA ---
 ROOT = Path(__file__).resolve().parents[1]
-FILE_1 = 'results.csv'  # Nazwa pierwszego pliku
-FILE_2 = 'results_etf.csv'  # TUTAJ WPISZ NAZWĘ DRUGIEGO PLIKU
+FILE_1 = 'results_1.csv'  # Nazwa pierwszego pliku
+FILE_2 = 'results_etf_1.csv'  # TUTAJ WPISZ NAZWĘ DRUGIEGO PLIKU
 
 
 # --- FUNKCJA ŁADUJĄCA DANE ---

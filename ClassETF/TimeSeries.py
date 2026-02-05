@@ -10,6 +10,10 @@ class TimeSeries:
         self._returns: pd.Series = pd.Series(dtype=float)
         self.load_data_from_csv(csv_path)
 
+
+    def metadata(self):
+        return self.metadata
+
     def load_data_from_csv(self, path: str):
         """
         Wczytanie szeregu z CSV zgodnie z podanym formatem:

@@ -22,10 +22,11 @@ if __name__ == "__main__":
 
     WIG_wagi=WIG20()
     data_start = date(2020, 1, 1)
+    #print(market.get_asset('PKN').metadata)
 
     # 3. Inicjalizacja Portfela TailCoR
 
-    my_tailcor_portfolio = PortfolioTailCoRETF(market, initial_capital=100000, data_start=data_start)
+    my_tailcor_portfolio = PortfolioTailCoRETF(market, initial_capital=100000, data_start=data_start, risk_threshold=1.09)
     my_tailcor_portfolio.rebalance_portfolio(WIG_wagi.get_index_weights(data_start))
 
     #3.5 Inicjalizacja stałego portfela (quasi index)
@@ -41,6 +42,6 @@ if __name__ == "__main__":
     # 5. Dostęp do wyników
     results_etf = my_tailcor_portfolio.get_history()
     results = my_portfolio.get_history()
-    save_pd_to_csv(results_etf, 'results_etf.csv')
-    save_pd_to_csv(results, 'results.csv')
+    save_pd_to_csv(results_etf, 'results_etf_1.csv')
+    save_pd_to_csv(results, 'results_1.csv')
 
