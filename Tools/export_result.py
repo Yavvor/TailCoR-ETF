@@ -72,7 +72,7 @@ if __name__ == "__main__":
     data_start = date(2019, 1, 1)
 
     # --- SCENARIUSZ 1: TailCoR ETF ---
-    risk_param = 1.09
+    risk_param = 1.06
     print("Liczenie TailCoR...")
     tailcor_pf = PortfolioTailCoRETF(market, initial_capital=100000, data_start=data_start, risk_threshold=risk_param)
     tailcor_pf.rebalance_portfolio(WIG_wagi.get_index_weights(data_start))
@@ -81,7 +81,7 @@ if __name__ == "__main__":
     # Eksport TailCoR
     export_result(
         portfolio_obj=tailcor_pf,
-        filename="tailcor_run_full",
+        filename="tailcor_run_long3",
         run_name="TailCoR WIG20 (Safe)",
         params={"type": "TailCoR", "risk_threshold": risk_param, "start_date": str(data_start)},
         market_obj=market
@@ -96,7 +96,7 @@ if __name__ == "__main__":
     # Eksport Benchmarku
     export_result(
         portfolio_obj=benchmark_pf,
-        filename="benchmark_run_full",
+        filename="benchmark_run_long3",
         run_name="Standard WIG20 ETF",
         params={"type": "Benchmark", "start_date": str(data_start)},
         market_obj=market
