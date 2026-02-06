@@ -61,7 +61,9 @@ def export_result(portfolio_obj, filename, run_name, params, market_obj):
 if __name__ == "__main__":
     # 1. Konfiguracja
 
-    conf = MarketConfig(start_date=date(2018, 1, 1), end_date=date(2022, 12, 31))
+    conf = MarketConfig(start_date=date(2020, 12, 1),
+                        end_date=date(2022, 6, 3))
+
     market = Market(conf)
 
     directories = [f"{ROOT}/Data/wse stocks"]
@@ -69,10 +71,10 @@ if __name__ == "__main__":
     market.load_assets_from_directories(directories, meta_path)
 
     WIG_wagi = WIG20()
-    data_start = date(2019, 1, 1)
+    data_start = date(2022, 2, 1)
 
     # --- SCENARIUSZ 1: TailCoR ETF ---
-    risk_param = 1.06
+    risk_param = 1.1
     print("Liczenie TailCoR...")
     tailcor_pf = PortfolioTailCoRETF(market, initial_capital=100000, data_start=data_start, risk_threshold=risk_param)
     tailcor_pf.rebalance_portfolio(WIG_wagi.get_index_weights(data_start))
@@ -81,8 +83,8 @@ if __name__ == "__main__":
     # Eksport TailCoR
     export_result(
         portfolio_obj=tailcor_pf,
-        filename="tailcor_run_long3",
-        run_name="TailCoR WIG20 (Safe)",
+        filename="tailcor_run_ukraine11",
+        run_name="TailCoR WIG20",
         params={"type": "TailCoR", "risk_threshold": risk_param, "start_date": str(data_start)},
         market_obj=market
     )
@@ -96,7 +98,7 @@ if __name__ == "__main__":
     # Eksport Benchmarku
     export_result(
         portfolio_obj=benchmark_pf,
-        filename="benchmark_run_long3",
+        filename="benchmark_run_ukraine",
         run_name="Standard WIG20 ETF",
         params={"type": "Benchmark", "start_date": str(data_start)},
         market_obj=market

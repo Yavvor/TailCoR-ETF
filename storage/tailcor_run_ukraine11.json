@@ -1,9 +1,10 @@
 {
-    "id": "benchmark_run_long3",
-    "name": "Standard WIG20 ETF",
+    "id": "tailcor_run_ukraine11",
+    "name": "TailCoR WIG20",
     "params": {
-        "type": "Benchmark",
-        "start_date": "2019-01-01"
+        "type": "TailCoR",
+        "risk_threshold": 1.1,
+        "start_date": "2022-02-01"
     },
     "generated_at": "2026-02-06",
     "sector_map": {

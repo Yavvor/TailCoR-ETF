@@ -1,10 +1,10 @@
 {
-    "id": "tailcor_run_long",
+    "id": "tailcor_run_ukraine06",
     "name": "TailCoR WIG20",
     "params": {
         "type": "TailCoR",
-        "risk_threshold": 1.09,
-        "start_date": "2019-01-01"
+        "risk_threshold": 1.06,
+        "start_date": "2022-02-01"
     },
     "generated_at": "2026-02-06",
     "sector_map": {

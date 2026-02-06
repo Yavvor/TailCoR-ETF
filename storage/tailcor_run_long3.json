@@ -1,6 +1,6 @@
 {
     "id": "tailcor_run_long3",
-    "name": "TailCoR WIG20 (Safe)",
+    "name": "TailCoR WIG20",
     "params": {
         "type": "TailCoR",
         "risk_threshold": 1.06,
